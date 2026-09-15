@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# SSH_ASKPASS target: pops up a caelestia-styled Quickshell password prompt
+# and prints whatever was entered to stdout, per the askpass protocol
+# (argv[1] is the prompt text; the password goes to stdout; a non-zero exit
+# or empty stdout means "cancelled").
+set -euo pipefail
+
+prompt="${1:-Enter your password:}"
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+repo_root="$(cd "$(dirname "$self")/.." && pwd)"
+qml_file="$repo_root/main.qml"
+
+if [[ ! -f "$qml_file" ]]; then
+    echo "caelestia-ssh-askpass: can't find main.qml next to $self" >&2
+    exit 1
+fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+fifo="$runtime_dir/caelestia-ssh-askpass.$$"
+mkfifo -m 600 "$fifo"
+trap 'rm -f "$fifo"' EXIT
+
+ASKPASS_PROMPT="$prompt" ASKPASS_FIFO="$fifo" \
+    quickshell -p "$qml_file" >/dev/null 2>&1 &
+qs_pid=$!
+
+password="$(cat "$fifo")"
+wait "$qs_pid" 2>/dev/null || true
+
+if [[ -n "$password" ]]; then
+    printf '%s' "$password"
+    exit 0
+fi
+exit 1

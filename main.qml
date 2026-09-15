@@ -233,11 +233,17 @@ PanelWindow {
                             window.finish(window.buffer);
                         } else if (event.key === Qt.Key_Backspace) {
                             window.buffer = (event.modifiers & Qt.ControlModifier) ? "" : window.buffer.slice(0, -1);
+                        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                            // Leave unaccepted so Keys.onTabPressed/onBacktabPressed below handle it.
+                            event.accepted = false;
+                            return;
                         } else if (/^[^\x00-\x1F\x7F-\x9F]+$/.test(event.text)) {
                             window.buffer += event.text;
                         }
                         event.accepted = true;
                     }
+                    Keys.onTabPressed: cancelButton.forceActiveFocus()
+                    Keys.onBacktabPressed: unlockButton.forceActiveFocus()
 
                     Component.onCompleted: forceActiveFocus()
 
@@ -337,9 +343,15 @@ PanelWindow {
                 }
 
                 Button {
+                    id: cancelButton
+
                     text: "Cancel"
                     flat: true
                     onClicked: window.finish("")
+
+                    Keys.onTabPressed: unlockButton.forceActiveFocus()
+                    Keys.onBacktabPressed: inputArea.forceActiveFocus()
+                    Keys.onEscapePressed: window.finish("")
 
                     contentItem: Text {
                         text: "Cancel"
@@ -349,12 +361,21 @@ PanelWindow {
                     }
                     background: Rectangle {
                         color: "transparent"
+                        radius: height / 2
+                        border.width: cancelButton.activeFocus ? 2 : 0
+                        border.color: window.palette.primary
                     }
                 }
 
                 Button {
+                    id: unlockButton
+
                     text: "Unlock"
                     onClicked: window.finish(window.buffer)
+
+                    Keys.onTabPressed: inputArea.forceActiveFocus()
+                    Keys.onBacktabPressed: cancelButton.forceActiveFocus()
+                    Keys.onEscapePressed: window.finish("")
 
                     contentItem: Text {
                         text: "Unlock"
@@ -368,6 +389,8 @@ PanelWindow {
                         implicitHeight: 36
                         radius: height / 2
                         color: window.palette.primary
+                        border.width: unlockButton.activeFocus ? 2 : 0
+                        border.color: window.palette.onPrimary
                     }
                 }
             }

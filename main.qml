@@ -13,10 +13,9 @@ PanelWindow {
     readonly property string fifoPath: Quickshell.env("ASKPASS_FIFO")
     property string buffer: ""
 
-    // ssh/ssh-add reuse the askpass prompt text to signal a failed retry
-    // (e.g. "Bad passphrase, try again for /home/user/.ssh/id_ed25519:"), so
-    // parse it into a short one-line label plus an optional key name instead
-    // of showing the whole sentence as the title.
+    // Splits window.prompt into a short display label, the key's basename
+    // (if the prompt names one), and whether the prompt reports a failed
+    // retry. Returns { error: bool, label: string, keyName: string }.
     readonly property var parsed: {
         const raw = window.prompt.trim();
         const bad = raw.match(/^bad passphrase, try again for (.+):$/i);
@@ -40,7 +39,7 @@ PanelWindow {
         };
     }
 
-    // Used until scheme.json loads (or if it's missing entirely).
+    // Static colour palette. Replaced by palette once scheme.json loads.
     readonly property var fallbackPalette: ({
         surfaceContainer: "#221716",
         onSurface: "#f9e0dd",
@@ -52,30 +51,11 @@ PanelWindow {
     })
     property var palette: fallbackPalette
 
-    // Each askpass invocation is its own short-lived process, so there's no
-    // channel back from ssh telling us whether what we submit is accepted —
-    // the only feedback we ever get is indirect, via the *next* invocation's
-    // prompt (see `parsed` above). So logging here is necessarily best-effort:
-    // we can log a rejection as soon as we learn about it (next invocation
-    // starts with an error prompt), and log that a passphrase was submitted,
-    // but never "accepted" — that fact never reaches an askpass at all.
-    function logPrefixed(message: string): void {
-        console.log(`[caelestia-ssh-askpass] ${message}`);
-    }
-
-    Component.onCompleted: {
-        if (window.parsed.error)
-            window.logPrefixed(`Passphrase rejected for '${window.parsed.keyName}'; prompting again.`);
-    }
-
+    // Writes text to fifoPath (the calling shell script's FIFO) and closes
+    // this window. An empty text signals a cancelled prompt. text is passed
+    // as an argv value rather than interpolated into the shell command, so
+    // it may contain any character.
     function finish(text: string): void {
-        const key = window.parsed.keyName || "key";
-        if (text.length === 0)
-            logPrefixed(`Cancelled the prompt for '${key}'.`);
-        else
-            logPrefixed(`Passphrase submitted for '${key}'.`);
-
-        // Argv-passed, not shell-interpolated, so the password can contain any character safely.
         Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" > \"$2\"", "_", text, fifoPath]);
         Qt.quit();
     }
@@ -202,9 +182,8 @@ PanelWindow {
                 }
             }
 
-            // Password field: mirrors the lock screen's approach of representing each
-            // typed character as an animated MaterialShape blob rather than a plain
-            // masked TextField, using the same M3Shapes module caelestia-shell uses.
+            // Password field. Renders window.buffer as a row of CharBlob shapes
+            // rather than masked text.
             Rectangle {
                 id: inputBox
 
@@ -256,7 +235,7 @@ PanelWindow {
                         } else if (event.key === Qt.Key_Backspace) {
                             window.buffer = (event.modifiers & Qt.ControlModifier) ? "" : window.buffer.slice(0, -1);
                         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            // Leave unaccepted so Keys.onTabPressed/onBacktabPressed below handle it.
+                            // Falls through to Keys.onTabPressed/onBacktabPressed below.
                             event.accepted = false;
                             return;
                         } else if (/^[^\x00-\x1F\x7F-\x9F]+$/.test(event.text)) {
@@ -295,6 +274,9 @@ PanelWindow {
                         }
                     }
 
+                    // One character of window.buffer. Uses the Repeater `index`
+                    // to pick a shape from shapeQueue, pops it in, then settles
+                    // it into a circle.
                     component CharBlob: Item {
                         id: charItem
 
@@ -364,13 +346,6 @@ PanelWindow {
                     Layout.fillWidth: true
                 }
 
-                // Both buttons share the same implicit height (via padding, not a
-                // fixed implicitHeight) so their pill shape and focus ring match
-                // regardless of label width. The ring itself is drawn as a halo
-                // just outside each button rather than as its own border, so it
-                // always sits against the card's surfaceContainer background
-                // instead of (for Unlock) the primary fill it would otherwise
-                // have almost no contrast against.
                 FocusRing {
                     control: cancelButton
 
@@ -433,6 +408,8 @@ PanelWindow {
                 }
             }
 
+            // Draws a border around control, offset 4px outside its edges on
+            // every side, visible only while control has active focus.
             component FocusRing: Item {
                 id: ring
 

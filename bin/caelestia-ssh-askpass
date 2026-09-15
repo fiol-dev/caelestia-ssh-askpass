@@ -21,11 +21,8 @@ fifo="$runtime_dir/caelestia-ssh-askpass.$$"
 mkfifo -m 600 "$fifo"
 trap 'rm -f "$fifo"' EXIT
 
-# Only stdout is discarded (it's Quickshell's own, unrelated to the
-# password channel below) — stderr is left connected so the console.log
-# messages main.qml prints (cancelled/submitted/rejected) stay visible.
 ASKPASS_PROMPT="$prompt" ASKPASS_FIFO="$fifo" \
-    quickshell -p "$qml_file" >/dev/null &
+    quickshell -p "$qml_file" >/dev/null 2>&1 &
 qs_pid=$!
 
 password="$(cat "$fifo")"

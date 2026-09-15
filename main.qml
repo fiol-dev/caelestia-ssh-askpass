@@ -13,6 +13,33 @@ PanelWindow {
     readonly property string fifoPath: Quickshell.env("ASKPASS_FIFO")
     property string buffer: ""
 
+    // ssh/ssh-add reuse the askpass prompt text to signal a failed retry
+    // (e.g. "Bad passphrase, try again for /home/user/.ssh/id_ed25519:"), so
+    // parse it into a short one-line label plus an optional key name instead
+    // of showing the whole sentence as the title.
+    readonly property var parsed: {
+        const raw = window.prompt.trim();
+        const bad = raw.match(/^bad passphrase, try again for (.+):$/i);
+        if (bad)
+            return {
+                error: true,
+                label: "Wrong passphrase, try again",
+                keyName: bad[1].split("/").pop()
+            };
+        const enter = raw.match(/^enter passphrase for (?:key )?['"]?(.+?)['"]?:$/i);
+        if (enter)
+            return {
+                error: false,
+                label: "Enter your passphrase",
+                keyName: enter[1].split("/").pop()
+            };
+        return {
+            error: false,
+            label: raw,
+            keyName: ""
+        };
+    }
+
     // Used until scheme.json loads (or if it's missing entirely).
     readonly property var fallbackPalette: ({
         surfaceContainer: "#221716",
@@ -72,7 +99,43 @@ PanelWindow {
         radius: 32
         color: window.palette.surfaceContainer
         border.width: 1
-        border.color: Qt.alpha(window.palette.outline, 0.4)
+        border.color: Qt.alpha(window.parsed.error ? window.palette.error : window.palette.outline, window.parsed.error ? 0.7 : 0.4)
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 150
+            }
+        }
+
+        SequentialAnimation {
+            id: shake
+
+            loops: 1
+            NumberAnimation {
+                target: card
+                property: "anchors.horizontalCenterOffset"
+                from: 0
+                to: 10
+                duration: 45
+            }
+            NumberAnimation {
+                target: card
+                property: "anchors.horizontalCenterOffset"
+                from: 10
+                to: -10
+                duration: 90
+            }
+            NumberAnimation {
+                target: card
+                property: "anchors.horizontalCenterOffset"
+                from: -10
+                to: 0
+                duration: 45
+            }
+        }
+
+        Component.onCompleted: if (window.parsed.error)
+            shake.start()
 
         ColumnLayout {
             id: layout
@@ -83,21 +146,44 @@ PanelWindow {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "🔒"
+                text: window.parsed.error ? "⚠️" : "🔒"
                 font.pixelSize: 32
             }
 
-            Text {
+            ColumnLayout {
                 Layout.fillWidth: true
-                Layout.alignment: Qt.AlignHCenter
-                text: window.prompt
-                color: window.palette.onSurface
-                font.pixelSize: 22
-                font.bold: true
-                font.letterSpacing: 0.2
-                font.family: "Google Sans Flex"
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
+                spacing: 4
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignHCenter
+                    text: window.parsed.label
+                    color: window.parsed.error ? window.palette.error : window.palette.onSurface
+                    font.pixelSize: 20
+                    font.bold: true
+                    font.letterSpacing: 0.2
+                    font.family: "Google Sans Flex"
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: 13
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: !!window.parsed.keyName
+                    text: window.parsed.keyName
+                    color: window.palette.onSurfaceVariant
+                    font.pixelSize: 13
+                    font.family: "Google Sans Flex"
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideMiddle
+                    maximumLineCount: 1
+                }
             }
 
             // Password field: mirrors the lock screen's approach of representing each
@@ -110,8 +196,12 @@ PanelWindow {
                 implicitHeight: 68
                 radius: height / 2
                 color: Qt.darker(window.palette.surfaceContainer, 1.15)
-                border.width: inputArea.activeFocus ? 2 : 1
-                border.color: inputArea.activeFocus ? window.palette.primary : Qt.alpha(window.palette.outline, 0.5)
+                border.width: inputArea.activeFocus || window.parsed.error ? 2 : 1
+                border.color: {
+                    if (window.parsed.error)
+                        return window.palette.error;
+                    return inputArea.activeFocus ? window.palette.primary : Qt.alpha(window.palette.outline, 0.5);
+                }
 
                 Behavior on border.color {
                     ColorAnimation {

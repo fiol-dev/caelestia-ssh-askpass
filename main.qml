@@ -144,12 +144,6 @@ PanelWindow {
             anchors.margins: 28
             spacing: 22
 
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: window.parsed.error ? "⚠️" : "🔒"
-                font.pixelSize: 32
-            }
-
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4

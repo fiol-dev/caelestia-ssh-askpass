@@ -52,7 +52,29 @@ PanelWindow {
     })
     property var palette: fallbackPalette
 
+    // Each askpass invocation is its own short-lived process, so there's no
+    // channel back from ssh telling us whether what we submit is accepted —
+    // the only feedback we ever get is indirect, via the *next* invocation's
+    // prompt (see `parsed` above). So logging here is necessarily best-effort:
+    // we can log a rejection as soon as we learn about it (next invocation
+    // starts with an error prompt), and log that a passphrase was submitted,
+    // but never "accepted" — that fact never reaches an askpass at all.
+    function logPrefixed(message: string): void {
+        console.log(`[caelestia-ssh-askpass] ${message}`);
+    }
+
+    Component.onCompleted: {
+        if (window.parsed.error)
+            window.logPrefixed(`Passphrase rejected for '${window.parsed.keyName}'; prompting again.`);
+    }
+
     function finish(text: string): void {
+        const key = window.parsed.keyName || "key";
+        if (text.length === 0)
+            logPrefixed(`Cancelled the prompt for '${key}'.`);
+        else
+            logPrefixed(`Passphrase submitted for '${key}'.`);
+
         // Argv-passed, not shell-interpolated, so the password can contain any character safely.
         Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" > \"$2\"", "_", text, fifoPath]);
         Qt.quit();
@@ -336,62 +358,97 @@ PanelWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 12
+                spacing: 20
 
                 Item {
                     Layout.fillWidth: true
                 }
 
-                Button {
-                    id: cancelButton
+                // Both buttons share the same implicit height (via padding, not a
+                // fixed implicitHeight) so their pill shape and focus ring match
+                // regardless of label width. The ring itself is drawn as a halo
+                // just outside each button rather than as its own border, so it
+                // always sits against the card's surfaceContainer background
+                // instead of (for Unlock) the primary fill it would otherwise
+                // have almost no contrast against.
+                FocusRing {
+                    control: cancelButton
 
-                    text: "Cancel"
-                    flat: true
-                    onClicked: window.finish("")
+                    Button {
+                        id: cancelButton
 
-                    Keys.onTabPressed: unlockButton.forceActiveFocus()
-                    Keys.onBacktabPressed: inputArea.forceActiveFocus()
-                    Keys.onEscapePressed: window.finish("")
-
-                    contentItem: Text {
+                        anchors.centerIn: parent
                         text: "Cancel"
-                        color: window.palette.onSurfaceVariant
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        color: "transparent"
-                        radius: height / 2
-                        border.width: cancelButton.activeFocus ? 2 : 0
-                        border.color: window.palette.primary
+                        flat: true
+                        padding: 12
+                        onClicked: window.finish("")
+
+                        Keys.onTabPressed: unlockButton.forceActiveFocus()
+                        Keys.onBacktabPressed: inputArea.forceActiveFocus()
+                        Keys.onEscapePressed: window.finish("")
+
+                        contentItem: Text {
+                            text: "Cancel"
+                            color: window.palette.onSurfaceVariant
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            implicitHeight: 40
+                            radius: height / 2
+                            color: "transparent"
+                        }
                     }
                 }
 
-                Button {
-                    id: unlockButton
+                FocusRing {
+                    control: unlockButton
 
-                    text: "Unlock"
-                    onClicked: window.finish(window.buffer)
+                    Button {
+                        id: unlockButton
 
-                    Keys.onTabPressed: inputArea.forceActiveFocus()
-                    Keys.onBacktabPressed: cancelButton.forceActiveFocus()
-                    Keys.onEscapePressed: window.finish("")
-
-                    contentItem: Text {
+                        anchors.centerIn: parent
                         text: "Unlock"
-                        color: window.palette.onPrimary
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
+                        padding: 12
+                        onClicked: window.finish(window.buffer)
+
+                        Keys.onTabPressed: inputArea.forceActiveFocus()
+                        Keys.onBacktabPressed: cancelButton.forceActiveFocus()
+                        Keys.onEscapePressed: window.finish("")
+
+                        contentItem: Text {
+                            text: "Unlock"
+                            color: window.palette.onPrimary
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            implicitWidth: 88
+                            implicitHeight: 40
+                            radius: height / 2
+                            color: window.palette.primary
+                        }
                     }
-                    background: Rectangle {
-                        implicitWidth: 88
-                        implicitHeight: 36
-                        radius: height / 2
-                        color: window.palette.primary
-                        border.width: unlockButton.activeFocus ? 2 : 0
-                        border.color: window.palette.onPrimary
-                    }
+                }
+            }
+
+            component FocusRing: Item {
+                id: ring
+
+                required property Item control
+
+                implicitWidth: control.implicitWidth + 8
+                implicitHeight: control.implicitHeight + 8
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: ring.control.width + 8
+                    height: ring.control.height + 8
+                    radius: height / 2
+                    color: "transparent"
+                    border.width: ring.control.activeFocus ? 2 : 0
+                    border.color: window.palette.primary
                 }
             }
         }

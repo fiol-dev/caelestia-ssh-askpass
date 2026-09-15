@@ -50,6 +50,33 @@ set -gx SSH_ASKPASS_REQUIRE force
 falling back to a terminal prompt, matching the old `x11-ssh-askpass`
 behaviour.)
 
+## Testing
+
+Quickest way to eyeball the prompt while iterating on `main.qml` — this
+prints whatever you type back to the terminal, so only use it with a throwaway
+value:
+
+```sh
+~/Projects/caelestia-ssh-askpass/bin/caelestia-ssh-askpass "Enter passphrase for key 'test':"
+echo "exit: $?"
+```
+
+To check the real ssh integration end to end, generate a scratch
+passphrase-protected key and unlock it through the askpass prompt via
+`ssh-add` (`</dev/null` denies it a terminal, forcing it to go through
+`SSH_ASKPASS` instead of prompting inline):
+
+```sh
+ssh-keygen -t ed25519 -N "correct-horse-battery-staple" -f /tmp/askpass-test-key -C askpass-test -q
+SSH_ASKPASS=~/.local/bin/caelestia-ssh-askpass SSH_ASKPASS_REQUIRE=force \
+    ssh-add /tmp/askpass-test-key </dev/null
+ssh-add -d /tmp/askpass-test-key.pub
+rm -f /tmp/askpass-test-key /tmp/askpass-test-key.pub
+```
+
+Enter `correct-horse-battery-staple` in the prompt; `ssh-add -l` should then
+show the test key was added (before you delete it above).
+
 ## Optional: blur
 
 Caelestia's own popups get blurred by a Hyprland layer rule matching their
